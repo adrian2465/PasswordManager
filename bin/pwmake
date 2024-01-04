@@ -1,0 +1,39 @@
+#!/bin/bash
+pwdir="$HOME/pws"
+if [ ! -d "$pwdir" ]
+then
+   echo "You must create a pw directory prior to running this script.  Expected to find directory $pwdir"
+   exit 1
+fi
+cd $pwdir
+if [ "$1" == "" ] 
+then 
+   echo "Must supply name of password (without the pw suffix)"
+   exit 1
+fi
+filename="$1.pw"
+
+
+read -p "Type new PW: "
+new_pw=$REPLY
+
+read -p "Type it again: "
+new_pw_again=$REPLY
+
+if [ "$new_pw" != "$new_pw_again" ]
+then
+   echo "Passwords do not match. Try again."
+   exit 1
+fi
+
+if [ -e $filename ]
+then
+   timestamp=$(date +"%Y%m%d%H%M%S")
+   bak="${filename}-${timestamp}"
+   mv $filename $bak
+   echo "Old PW backed up to $bak"
+fi
+
+echo -n $new_pw | openssl aes-256-cbc -a -salt -pass pass:$(cat $HOME/.ssh/password_manager_master_password) > $filename
+chmod u-w $filename
+echo "Password recorded in $filename. Optionally, create $1.id and $1.totp (see README.md)"

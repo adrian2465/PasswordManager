@@ -1,0 +1,3 @@
+#!/bin/bash
+# https://ibmcd-infra-utility-ipa-001.ipa.eclinical.cloud/ipa/ui/#/e/otptoken/search
+echo "$(cat ~/.ssh/password_manager_master_password)" | totp-cli generate Personal IPA.ECLINICAL.CLOUD 2>/dev/null

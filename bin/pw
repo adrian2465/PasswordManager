@@ -1,0 +1,140 @@
+#!/bin/bash
+#
+# TITLE:
+# CLI Password Manager with TOTP support v1.0
+#
+# DESCRIPTION:
+# Obviates need for 1-Password or LastPass
+#
+# Menu-driven PW manager will list your passwords and temporarily 
+# store a password in your paste buffer (7 seconds) during which time you can
+# paste it into a password prompt.
+#
+# FEATURES:
+# * Supports TOTP if `totp-cli` is installed.
+# * Holds password in your paste buffer for 7 seconds, then restores paste buffer 
+#   previous contents
+# * Backs-up old passwords automatically when you change them
+#
+# AUTHOR:
+# Adrian Vrouwenvelder
+# adrian.vrouwenvelder@merative.com
+# June 16, 2023
+#
+# DISCLAIMER:
+# Unsupported. Use at your own risk.
+#
+# REQUIREMENTS:
+#  * OpenSSL (for encryption/decription capability)
+#    $ brew install openssl
+#  * totp-cli # If you use the TOTP feature
+#    $ brew install totp-cli
+#
+# SETUP:
+#  Set up a master encryption password. Can be arbitrarily complex.
+#   mkdir $HOME/.ssh  ## You probably already have this
+#   echo "supplyyourmasterpasswordhere" > $HOME/.ssh/password_manager_master_password
+#   chmod go-rwx ~/.ssh/password_manager_master_password
+#
+#  Set up a directory in which your ENCRYPTED passwords are to be stored.
+#   mkdir $HOME/pws
+#   chmod go-rwx ~/pws
+#
+# USAGE - TO CREATE A NEW PASSWORD
+# See below (USAGE - TO USE A PASSWORD) # 5 to see how this example presents itself.
+#   pwmake <pwid> ## Create <pwid>.pw file in $HOME/pws E.g. pwmake "cloud"
+#      Type new PW: xxxxxx
+#      Retype new PW: xxxxxx
+#  Optionally, create the following two files:
+#  [OPTIONAL] To ANNOTATE your new password (e.g. add hints). E.g.
+#   echo "RDC, Kibana - ID=vrouwenveldera" > $HOME/pws/cloud.id
+#  [OPTIONAL] For TOTP, create a totp file with the appropriate TOTP command. 
+#   Sample Contents for IBM Cloud two-part passwords (you can use this exact content):
+#    #!/bin/bash
+#    # https://ibmcd-infra-utility-ipa-001.ipa.eclinical.cloud/ipa/ui/#/e/otptoken/search
+#    echo "$(cat ~/.ssh/password_manager_master_password)" | totp-cli generate Personal IPA.ECLINICAL.CLOUD 2>/dev/null
+#
+# USAGE - TO USE A PASSWORD:
+# Example to select cloud TOTP password:
+#   $ pw
+#   Select account
+#   0) merative_db  (sql_admin)
+#   1) p10_merative_vpn_and_jira  (p10.merative.com - DUO Level 2 - vrouwenveldera)
+#   2) merge_vpn_and_jira  (vpn.merge.com - 3 QMS - vrouwenveldera)
+#   3) apple  (adrian.vrouwenvelder@merative.com)
+#   4) zelta  (vrouwenveldera)
+#   5) cloud (RDC, Kibana - ID=vrouwenveldera)
+#   6) jira_signing  (vrouwenveldera)
+#   Enter selection: 5
+#
+#
+waittime=7 # Seconds to wait for you to use your buffered PW before restoring the buffer.
+pwdir="$HOME/pws"
+masterpw="$HOME/.ssh/password_manager_master_password" 
+encryption_algorithm=aes-256-cbc
+clear
+if [ ! -d "$pwdir" ]
+then
+   echo "You must create a pw directory prior to running this script.  Expected to find directory $pwdir"
+   exit 1
+fi
+cd $pwdir
+if [ "$1" == "" ]
+then
+  pws=($(ls -tr *.pw ))
+else
+  pws=($(ls -tr *.pw | grep $1 ))
+fi
+pws_len=${#pws[@]}
+while true
+do
+   echo "Select account"
+   for (( i=0; i < ${pws_len}; i++ ))
+   do
+      site=$(echo "${pws[$i]}" | sed 's/\.pw$//')
+      if [ -e "$site.id" ]
+      then
+	xtra=" ($(cat $site.id))"
+      else
+	xtra=""
+      fi
+      echo "$i) $site $xtra" 
+   done
+   read -p "Enter selection: "
+   selection=$REPLY
+   pwfile="${pws[$selection]}"
+   if [ "$pwfile" == "" ]
+   then
+      echo "Invalid selection."
+      exit 1
+   fi
+   site=$(echo "$pwfile" | sed 's/\.pw$//')
+
+   oldstuff=$(pbpaste)
+   if [ -e "$site.pw" ] 
+   then
+     if [ -e "$site.totp" ]
+     then
+       cat $pwfile | openssl $encryption_algorithm -d -a -pass pass:$(cat $masterpw ) | sed "s/$/$(source $site.totp)/" | pbcopy
+     else
+       cat $pwfile | openssl $encryption_algorithm -d -a -pass pass:$(cat $masterpw ) | pbcopy
+     fi
+   else
+     echo "Password for $site not available"
+     exit 1
+   fi
+   
+   if [ -e "$site.id" ]
+   then
+     xtra="$(cat $site.id)"
+   else
+     xtra=""
+   fi
+   
+   clear
+   echo "Password for $site $xtra is now in paste buffer."
+   echo "Previous paste buffer will be restored in $waittime seconds"
+   sleep $waittime
+   echo -n "$oldstuff" | pbcopy
+   clear
+done

@@ -72,6 +72,7 @@ waittime=7 # Seconds to wait for you to use your buffered PW before restoring th
 pwdir="$HOME/pws"
 masterpw="$HOME/.ssh/password_manager_master_password" 
 encryption_algorithm=aes-256-cbc
+tput smcup
 clear
 if [ ! -d "$pwdir" ]
 then
@@ -86,55 +87,53 @@ else
   pws=($(ls -tr *.pw | grep $1 ))
 fi
 pws_len=${#pws[@]}
-while true
+echo "Select account"
+for (( i=0; i < ${pws_len}; i++ ))
 do
-   echo "Select account"
-   for (( i=0; i < ${pws_len}; i++ ))
-   do
-      site=$(echo "${pws[$i]}" | sed 's/\.pw$//')
-      if [ -e "$site.id" ]
-      then
-	xtra=" ($(cat $site.id))"
-      else
-	xtra=""
-      fi
-      echo "$i) $site $xtra" 
-   done
-   read -p "Enter selection: "
-   selection=$REPLY
-   pwfile="${pws[$selection]}"
-   if [ "$pwfile" == "" ]
-   then
-      echo "Invalid selection."
-      exit 1
-   fi
-   site=$(echo "$pwfile" | sed 's/\.pw$//')
-
-   oldstuff=$(pbpaste)
-   if [ -e "$site.pw" ] 
-   then
-     if [ -e "$site.totp" ]
-     then
-       cat $pwfile | openssl $encryption_algorithm -d -a -pass pass:$(cat $masterpw ) | sed "s/$/$(source $site.totp)/" | pbcopy
-     else
-       cat $pwfile | openssl $encryption_algorithm -d -a -pass pass:$(cat $masterpw ) | pbcopy
-     fi
-   else
-     echo "Password for $site not available"
-     exit 1
-   fi
-   
+   site=$(echo "${pws[$i]}" | sed 's/\.pw$//')
    if [ -e "$site.id" ]
    then
-     xtra="$(cat $site.id)"
+	xtra=" ($(cat $site.id))"
    else
-     xtra=""
+	xtra=""
    fi
-   
-   clear
-   echo "Password for $site $xtra is now in paste buffer."
-   echo "Previous paste buffer will be restored in $waittime seconds"
-   sleep $waittime
-   echo -n "$oldstuff" | pbcopy
-   clear
+   echo "$i) $site $xtra" 
 done
+read -p "Enter selection: "
+selection=$REPLY
+pwfile="${pws[$selection]}"
+if [ "$pwfile" == "" ]
+then
+   echo "Invalid selection."
+   exit 1
+fi
+site=$(echo "$pwfile" | sed 's/\.pw$//')
+
+oldstuff=$(pbpaste)
+if [ -e "$site.pw" ] 
+then
+  if [ -e "$site.totp" ]
+  then
+    cat $pwfile | openssl $encryption_algorithm -d -a -pass pass:$(cat $masterpw ) | sed "s/$/$(source $site.totp)/" | pbcopy
+  else
+    cat $pwfile | openssl $encryption_algorithm -d -a -pass pass:$(cat $masterpw ) | pbcopy
+  fi
+else
+  echo "Password for $site not available"
+  exit 1
+fi
+
+if [ -e "$site.id" ]
+then
+  xtra="$(cat $site.id)"
+else
+  xtra=""
+fi
+
+clear
+echo "Password for $site $xtra is now in paste buffer."
+echo "Previous paste buffer will be restored in $waittime seconds"
+sleep $waittime
+echo -n "$oldstuff" | pbcopy
+clear
+tput rmcup
